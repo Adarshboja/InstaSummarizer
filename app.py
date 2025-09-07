@@ -1,17 +1,23 @@
-import os
+# app.py
+
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
+import os
 from gemini_utils import extract_text_from_pdf, get_summary, get_chat_answer
 
 app = Flask(__name__)
+
+# File upload folder
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-chat_context = {"text": ""}  # Shared across sessions (for demo)
+# Store document context for Q&A
+chat_context = {"text": ""}
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html')  # Serve frontend
 
 @app.route('/result', methods=['POST'])
 def result():
@@ -20,29 +26,31 @@ def result():
         summary_length = request.form.get('summary_length', 'medium')
         summary_style = request.form.get('summary_style', 'concise')
 
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        # Save uploaded file
+        filename = secure_filename(file.filename) #check file name is safe
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)#create full path to save
         file.save(filepath)
 
-        full_text = extract_text_from_pdf(filepath)
-        chat_context["text"] = full_text  # Save for chatbot
-
-        summary = get_summary(full_text, summary_length, summary_style)
+        # Extract and summarize
+        full_text = extract_text_from_pdf(filepath)#take total text frm pdf
+        chat_context["text"] = full_text  # Save for future questions
+        summary = get_summary(full_text, summary_length, summary_style)#gen sum from utils method
 
         return jsonify({"summary": summary})
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": f"An error occurred: {str(e)}"})
 
-@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['POST'])# runs whrn user send a msg in ui
 def chat():
     try:
-        user_message = request.json['message']
-        if not chat_context["text"]:
-            return jsonify({"answer": "Please upload a document first."})
+        user_message = request.json.get('message') #gather user msg
+        if not chat_context["text"]:#check is not there pdf
+            return jsonify({"answer": "Please upload a PDF before asking questions."})
+
         answer = get_chat_answer(chat_context["text"], user_message)
         return jsonify({"answer": answer})
     except Exception as e:
         return jsonify({"answer": f"Error: {str(e)}"})
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == '__main__': #run is file is directly executed
+    app.run(debug=True) #auto reloads on code changes(debug=True)
